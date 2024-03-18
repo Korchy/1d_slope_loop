@@ -1,2 +1,17 @@
-# 1d_slope_loop
-1D Slope Loop
+# 1D Slope Loop
+
+Blender add-on.
+
+Add-on functionality
+-
+Modifies selected loop to make a smooth slope with desired degrees, permilles or percents.
+
+Blender version
+-
+2.79
+
+Version history
+-
+
+1.0.0
+- Release
