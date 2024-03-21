@@ -6,6 +6,8 @@
 
 import bmesh
 import bpy
+import math
+from mathutils import Vector
 from bpy.props import EnumProperty, FloatProperty
 from bpy.types import Operator, Panel, Scene
 from bpy.utils import register_class, unregister_class
@@ -28,41 +30,79 @@ bl_info = {
 class SlopeLoop:
 
     @classmethod
-    def make_slope_loop(cls, context, ob, mode, value):
-        print('make slope', mode, value)
-        return
-
+    def make_slope_loop(cls, context, ob, slope_mode, value, op):
         # Make slope from selected loop
         ob = ob if ob else context.active_object
         # edit/object mode
         mode = ob.mode
         if ob.mode == 'EDIT':
             bpy.ops.object.mode_set(mode='OBJECT')
+        # selection mode
+        select_mode = 'VERT' if context.tool_settings.mesh_select_mode[0] \
+            else ('EDGE' if context.tool_settings.mesh_select_mode[1] else None)
         # get data loop from source mesh
         bm = bmesh.new()
         bm.from_mesh(ob.data)
         bm.verts.ensure_lookup_table()
         bm.edges.ensure_lookup_table()
         # source vertices
-        src_vertices = [vert for vert in bm.verts if vert.select]
-        if src_vertices:
-            top_vert = max([vert for vert in src_vertices], key=lambda vert: vert.co.z)
-            first_vert = next((vert for vert in src_vertices
-                               if len(vert.link_edges) == 1 and vert != top_vert), None)
-            selection_loop_sorted = cls.vertices_loop_sorted(
-                bmesh_vertices_list=src_vertices,
-                bmesh_first_vertex=first_vert
-            )
-
-        # save changed data to stairs mesh
-        bm.to_mesh(ob.data)
+        selected_vertices = [vert for vert in bm.verts if vert.select]
+        if selected_vertices:
+            # if selected only one edge - only print info to INFO output
+            selected_edges = [edge for edge in bm.edges if edge.select]
+            if len(selected_edges) == 1:
+                # selected only one edge - print to INFO
+                edge_slope = cls._get_slope_by_verts(
+                    v1=selected_edges[0].verts[0],
+                    v2=selected_edges[0].verts[1]
+                )
+                op.report(
+                    type={'INFO'},
+                    message='Active edge angle: '
+                            + str(cls._slope_to_mode(radians=edge_slope, mode=slope_mode))
+                            + ' ' + slope_mode
+                )
+            else:
+                # create slope - move all vertices starting from active vertically by slope value
+                # find active vertex
+                active_vertex = None
+                if bm.select_history.active:
+                    if select_mode == 'VERT':
+                        # active vertex
+                        active_vertex = bm.select_history.active
+                    elif select_mode == 'EDGE':
+                        # start vertex of active edge
+                        active_edge = bm.select_history.active
+                        active_vertex = active_edge.verts[0] \
+                            if len([e for e in active_edge.verts[0].link_edges if e.select]) == 1 \
+                            else active_edge.verts[1]
+                if active_vertex:
+                    # get sorted vertices loop starting from active vertex
+                    vertices_loop = cls._vertices_loop_sorted(
+                        bmesh_vertices_list=selected_vertices,
+                        bmesh_first_vertex=active_vertex
+                    )
+                    if vertices_loop:
+                        # get angle in radians by slope mode and value
+                        radians = cls._mode_to_radians(value=value, mode=slope_mode)
+                        for vertex in vertices_loop[1:]:
+                            # count height difference for each point
+                            diff = cls._slope_points_height_diff(
+                                v1=active_vertex,
+                                v2=vertex,
+                                radians=radians
+                            )
+                            # apply height difference for vertex
+                            vertex.co.z = active_vertex.co.z - diff
+                        # save changed data to mesh
+                        bm.to_mesh(ob.data)
         bm.free()
         # return mode back
         bpy.ops.object.mode_set(mode=mode)
 
     @staticmethod
-    def vertices_loop_sorted(bmesh_vertices_list, bmesh_first_vertex):
-        # return list with vertices sorted by following each other in the loop
+    def _vertices_loop_sorted(bmesh_vertices_list, bmesh_first_vertex):
+        # return list with vertices sorted by following each other in the loop, starting from first_vertex
         vertices_sorted = []
         if bmesh_vertices_list and bmesh_first_vertex:
             vertex = bmesh_first_vertex
@@ -71,7 +111,7 @@ class SlopeLoop:
             while vertex is not None:
                 vertices_sorted.append(vertex)
                 edge = next((_edge for _edge in vertex.link_edges
-                             if _edge.other_vert(vertex) not in vertices_sorted), None)
+                             if _edge.select and _edge.other_vert(vertex) not in vertices_sorted), None)
                 vertex = edge.other_vert(vertex) if edge else None
                 # alarm break
                 i += 1
@@ -80,6 +120,69 @@ class SlopeLoop:
                     break
         # return sorted sequence
         return vertices_sorted
+
+    @staticmethod
+    def _get_slope_by_verts(v1, v2):
+        # get slope angle by two vertices (BMVerts) in radians
+        v = v1.co - v2.co   # vector from v1 to v2
+        v_z = Vector((v.x, v.y, 0.0))   # projection on XY plane
+        return v.angle(v_z)
+
+    @staticmethod
+    def _slope_points_height_diff(v1, v2, radians):
+        # count height difference between two points by angle
+        v = v1.co - v2.co   # vector from v1 to v2
+        return v.length * math.sin(radians)
+
+    @classmethod
+    def _slope_to_mode(cls, radians, mode):
+        # convert angle from radians to mode (percents, permilles, degrees)
+        if mode == 'Degrees':
+            return cls._rad2deg(radians=radians)
+        elif mode == 'Permilles':
+            return cls._rad2pm(radians=radians)
+        elif mode == 'Percents':
+            return cls._rad2pc(radians=radians)
+
+    @classmethod
+    def _mode_to_radians(cls, value, mode):
+        # convert angle from mode (percents, permilles, degrees) to radians
+        if mode == 'Degrees':
+            return cls._deg2rad(degrees=value)
+        elif mode == 'Permilles':
+            return cls._pm2rad(permilles=value)
+        elif mode == 'Percents':
+            return cls._pc2rad(percents=value)
+
+    @staticmethod
+    def _rad2deg(radians):
+        # convert radians to degrees
+        return math.degrees(radians)
+
+    @staticmethod
+    def _deg2rad(degrees):
+        # convert degrees to radians
+        return math.radians(degrees)
+
+    @staticmethod
+    def _rad2pm(radians):
+        # convert radians to permilles
+        return math.tan(radians) * 1000
+
+    @staticmethod
+    def _pm2rad(permilles):
+        # convert permilles to radians
+        return math.atan(permilles / 1000)
+
+    @staticmethod
+    def _rad2pc(radians):
+        # convert radians to percents
+        return math.tan(radians) * 100
+
+    @staticmethod
+    def _pc2rad(percents):
+        # convert percents to radians
+        return math.atan(percents / 100)
 
     @staticmethod
     def ui(layout, context):
@@ -131,8 +234,9 @@ class SlopeLoop_OT_make_slope(Operator):
         SlopeLoop.make_slope_loop(
             context=context,
             ob=context.active_object,
-            mode=self.mode,
-            value=self.value
+            slope_mode=self.mode,
+            value=self.value,
+            op=self
         )
         return {'FINISHED'}
 
