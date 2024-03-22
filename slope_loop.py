@@ -63,7 +63,7 @@ class SlopeLoop:
                 op.report(
                     type={'INFO'},
                     message='Active edge angle: '
-                            + str(cls._slope_to_mode(radians=edge_slope, mode=slope_mode))
+                            + str(round(cls._slope_to_mode(radians=edge_slope, mode=slope_mode), 4))
                             + ' ' + slope_mode
                 )
             else:
