@@ -136,8 +136,10 @@ class SlopeLoop:
         bm.from_mesh(ob.data)
         bm.verts.ensure_lookup_table()
         bm.edges.ensure_lookup_table()
-        # source vertices
-        selected_vertices = [vert for vert in bm.verts if vert.select and len([link_edge for link_edge in vert.link_edges if link_edge.select]) > 1]
+        # source vertices - selected, exclude first and last
+        selected_vertices = [vert for vert in bm.verts
+                             if vert.select and len([lnk_edge for lnk_edge in vert.link_edges if lnk_edge.select]) > 1
+                             ]
         for vertex in selected_vertices:
             vertex_edges = [edge for edge in vertex.link_edges if not edge.select]
             for edge in vertex_edges:
