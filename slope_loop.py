@@ -29,6 +29,10 @@ bl_info = {
 
 class SlopeLoop:
 
+    # 'FULL_SLOPE' for setting desired slope value from first to last point
+    # 'EACH_SLOPE' for setting desired slope value for each edge of the loop
+    _result_mode = 'EACH_SLOPE'
+
     @classmethod
     def make_slope_loop(cls, context, ob, slope_mode, value, op):
         # Make slope from selected loop
@@ -85,17 +89,61 @@ class SlopeLoop:
                     if vertices_loop:
                         # get angle in radians by slope mode and value
                         radians = cls._mode_to_radians(value=value, mode=slope_mode)
-                        for vertex in vertices_loop[1:]:
-                            # count height difference for each point
-                            diff = cls._slope_points_height_diff(
-                                v1=active_vertex,
-                                v2=vertex,
-                                radians=radians
-                            )
-                            # apply height difference for vertex
-                            vertex.co.z = active_vertex.co.z - diff
+                        if cls._result_mode == 'FULL_SLOPE':
+                            # creates full slope (from first to last point) have the desired slope value
+                            for vertex in vertices_loop[1:]:
+                                # count height difference between first point and current point
+                                diff = cls._slope_points_height_diff(
+                                    v1=active_vertex,
+                                    v2=vertex,
+                                    radians=radians
+                                )
+                                # apply height difference for vertex
+                                vertex.co.z = active_vertex.co.z + diff
+                        elif cls._result_mode == 'EACH_SLOPE':
+                            # each point should have the desired slope value
+                            # split loop to vertices pairs
+                            vertex_chunks = list(cls._chunks(
+                                lst=vertices_loop,
+                                n=2,
+                                offset=1
+                            ))[:-1]
+                            for chunk in vertex_chunks:
+                                # get height difference between current point and next point
+                                diff = cls._slope_points_height_diff(
+                                    v1=chunk[0],
+                                    v2=chunk[1],
+                                    radians=radians
+                                )
+                                # apply height difference for each next point
+                                chunk[1].co.z = chunk[0].co.z + diff
                         # save changed data to mesh
                         bm.to_mesh(ob.data)
+        bm.free()
+        # return mode back
+        bpy.ops.object.mode_set(mode=mode)
+
+    @classmethod
+    def align_neighbour(cls, context, ob):
+        # align neighbour vertices of selected loop
+        ob = ob if ob else context.active_object
+        # edit/object mode
+        mode = ob.mode
+        if ob.mode == 'EDIT':
+            bpy.ops.object.mode_set(mode='OBJECT')
+        # get data loop from source mesh
+        bm = bmesh.new()
+        bm.from_mesh(ob.data)
+        bm.verts.ensure_lookup_table()
+        bm.edges.ensure_lookup_table()
+        # source vertices
+        selected_vertices = [vert for vert in bm.verts if vert.select and len([link_edge for link_edge in vert.link_edges if link_edge.select]) > 1]
+        for vertex in selected_vertices:
+            vertex_edges = [edge for edge in vertex.link_edges if not edge.select]
+            for edge in vertex_edges:
+                edge.other_vert(vertex).co.z = vertex.co.z
+        # save changed data to mesh
+        bm.to_mesh(ob.data)
         bm.free()
         # return mode back
         bpy.ops.object.mode_set(mode=mode)
@@ -131,8 +179,9 @@ class SlopeLoop:
     @staticmethod
     def _slope_points_height_diff(v1, v2, radians):
         # count height difference between two points by angle
-        v = v1.co - v2.co   # vector from v1 to v2
-        return v.length * math.sin(radians)
+        v = v2.co - v1.co   # vector from v1 to v2
+        v1 = Vector((v.x, v.y, 0.0))
+        return v1.length / round(math.tan(math.radians(90) - radians), 4)
 
     @classmethod
     def _slope_to_mode(cls, radians, mode):
@@ -167,22 +216,22 @@ class SlopeLoop:
     @staticmethod
     def _rad2pm(radians):
         # convert radians to permilles
-        return math.tan(radians) * 1000
+        return round(math.tan(radians), 4) * 1000.0
 
     @staticmethod
     def _pm2rad(permilles):
         # convert permilles to radians
-        return math.atan(permilles / 1000)
+        return round(math.atan(permilles / 1000.0), 4)
 
     @staticmethod
     def _rad2pc(radians):
         # convert radians to percents
-        return math.tan(radians) * 100
+        return round(math.tan(radians), 4) * 100
 
     @staticmethod
     def _pc2rad(percents):
         # convert percents to radians
-        return math.atan(percents / 100)
+        return round(math.atan(percents / 100), 4)
 
     @staticmethod
     def ui(layout, context):
@@ -204,6 +253,15 @@ class SlopeLoop:
             property='slope_loop_prop_value',
             text=''
         )
+        layout.operator(
+            operator='slope_loop.align_neighbour',
+            icon='GRIP'
+        )
+
+    @staticmethod
+    def _chunks(lst, n, offset=0):
+        for i in range(0, len(lst), n - offset):
+            yield lst[i:i + n]
 
 
 # OPERATORS
@@ -215,8 +273,7 @@ class SlopeLoop_OT_make_slope(Operator):
 
     value = FloatProperty(
         name='Value',
-        default=10.0,
-        min=0.0
+        default=10.0
     )
 
     mode = EnumProperty(
@@ -241,6 +298,19 @@ class SlopeLoop_OT_make_slope(Operator):
         return {'FINISHED'}
 
 
+class SlopeLoop_OT_align_neighbour(Operator):
+    bl_idname = 'slope_loop.align_neighbour'
+    bl_label = 'Align Neighbour'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def execute(self, context):
+        SlopeLoop.align_neighbour(
+            context=context,
+            ob=context.active_object
+        )
+        return {'FINISHED'}
+
+
 # PANELS
 
 class SlopeLoop_PT_panel(Panel):
@@ -261,8 +331,7 @@ class SlopeLoop_PT_panel(Panel):
 def register(ui=True):
     Scene.slope_loop_prop_value = FloatProperty(
         name='Value',
-        default=10,
-        min=0.0
+        default=10
     )
     Scene.slope_loop_prop_mode = EnumProperty(
         name='Mode',
@@ -275,6 +344,7 @@ def register(ui=True):
         description='Value mode'
     )
     register_class(SlopeLoop_OT_make_slope)
+    register_class(SlopeLoop_OT_align_neighbour)
     if ui:
         register_class(SlopeLoop_PT_panel)
 
@@ -282,6 +352,7 @@ def register(ui=True):
 def unregister(ui=True):
     if ui:
         unregister_class(SlopeLoop_PT_panel)
+    unregister_class(SlopeLoop_OT_align_neighbour)
     unregister_class(SlopeLoop_OT_make_slope)
     del Scene.slope_loop_prop_mode
     del Scene.slope_loop_prop_value
