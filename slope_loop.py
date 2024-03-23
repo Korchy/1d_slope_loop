@@ -143,7 +143,9 @@ class SlopeLoop:
         for vertex in selected_vertices:
             vertex_edges = [edge for edge in vertex.link_edges if not edge.select]
             for edge in vertex_edges:
-                edge.other_vert(vertex).co.z = vertex.co.z
+                moving_vert = edge.other_vert(vertex)
+                if moving_vert.hide is False:   # don't move hidden vertices
+                    moving_vert.co.z = vertex.co.z
         # save changed data to mesh
         bm.to_mesh(ob.data)
         bm.free()
