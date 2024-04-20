@@ -247,7 +247,8 @@ class SlopeLoop:
         op.mode = context.scene.slope_loop_prop_mode
         op.value = context.scene.slope_loop_prop_value
         # props
-        layout.prop(
+        row = layout.row()
+        row.prop(
             data=context.scene,
             property='slope_loop_prop_mode',
             expand=True
