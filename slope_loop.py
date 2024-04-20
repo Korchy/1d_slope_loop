@@ -16,7 +16,7 @@ bl_info = {
     "name": "Slope Loop",
     "description": "Modifies selected loop to create uniform slope",
     "author": "Nikita Akimov, Paul Kotelevets",
-    "version": (1, 0, 0),
+    "version": (1, 0, 1),
     "blender": (2, 79, 0),
     "location": "View3D > Tool panel > 1D > Slope Loop",
     "doc_url": "https://github.com/Korchy/1d_slope_loop",
@@ -273,6 +273,7 @@ class SlopeLoop:
 class SlopeLoop_OT_make_slope(Operator):
     bl_idname = 'slope_loop.make_slope'
     bl_label = 'Make Slope'
+    bl_description = 'Reshape the selected loop to the desired slope starting from the active vertex'
     bl_options = {'REGISTER', 'UNDO'}
 
     value = FloatProperty(
@@ -305,6 +306,7 @@ class SlopeLoop_OT_make_slope(Operator):
 class SlopeLoop_OT_align_neighbour(Operator):
     bl_idname = 'slope_loop.align_neighbour'
     bl_label = 'Align Neighbour'
+    bl_description = 'Inherit the height of vertices directly connected to the interior of the selected loop.'
     bl_options = {'REGISTER', 'UNDO'}
 
     def execute(self, context):

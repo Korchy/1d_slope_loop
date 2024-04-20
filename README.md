@@ -12,6 +12,8 @@ Blender version
 
 Version history
 -
+1.0.1
+- UI improving
 
 1.0.0
 - Release
