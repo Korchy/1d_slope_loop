@@ -56,15 +56,11 @@ class SlopeLoop:
             selected_edges = [edge for edge in bm.edges if edge.select]
             if len(selected_edges) == 1:
                 # selected only one edge - print to INFO
-                edge_slope = cls._get_slope_by_verts(
+                cls._info_angle_between_two_vertices(
                     v1=selected_edges[0].verts[0],
-                    v2=selected_edges[0].verts[1]
-                )
-                op.report(
-                    type={'INFO'},
-                    message='Active edge angle: '
-                            + str(round(cls._slope_to_mode(radians=edge_slope, mode=slope_mode), 4))
-                            + ' ' + slope_mode
+                    v2=selected_edges[0].verts[1],
+                    mode=slope_mode,
+                    op=op
                 )
             elif len(selected_edges) > 1:
                 # create slope - move all vertices starting from active vertically by slope value
@@ -131,9 +127,6 @@ class SlopeLoop:
         mode = ob.mode
         if ob.mode == 'EDIT':
             bpy.ops.object.mode_set(mode='OBJECT')
-        # selection mode
-        select_mode = 'VERT' if context.tool_settings.mesh_select_mode[0] \
-            else ('EDGE' if context.tool_settings.mesh_select_mode[1] else None)
         # get data loop from source mesh
         bm = bmesh.new()
         bm.from_mesh(ob.data)
@@ -141,25 +134,18 @@ class SlopeLoop:
         bm.edges.ensure_lookup_table()
         # source vertices
         selected_vertices = [vert for vert in bm.verts if vert.select]
-        # print('selected vertices', selected_vertices)
-        # print('selected vertices', [len(v.link_edges) for v in selected_vertices])
         if selected_vertices:
-            # if selected only one edge - only print info to INFO output
-            selected_edges = [edge for edge in bm.edges if edge.select]
-            if len(selected_edges) == 1:
-                # selected only one edge - print to INFO
-                edge_slope = cls._get_slope_by_verts(
-                    v1=selected_edges[0].verts[0],
-                    v2=selected_edges[0].verts[1]
+            # if selected only 2 vertices - only print info to INFO output
+            if len(selected_vertices) == 2:
+                # selected only two vertices - print to INFO
+                cls._info_angle_between_two_vertices(
+                    v1=selected_vertices[0],
+                    v2=selected_vertices[1],
+                    mode=context.scene.slope_loop_prop_mode,
+                    op=op
                 )
-                op.report(
-                    type={'INFO'},
-                    message='Active edge angle: '
-                            + str(round(cls._slope_to_mode(radians=edge_slope, mode=context.scene.slope_loop_prop_mode), 4))
-                            + ' ' + context.scene.slope_loop_prop_mode
-                )
-            elif len(selected_edges) > 1:
-                # create slope - move all vertices starting from active vertically by slope value
+            elif len(selected_vertices) > 2:
+                # create slope - move all vertices vertically by slope value
                 # all vertices, exclude first and last - to move
                 moving_vertices = [vertex for vertex in selected_vertices
                                    if len([e for e in vertex.link_edges if e.select]) != 1]
@@ -333,6 +319,20 @@ class SlopeLoop:
     def _chunks(lst, n, offset=0):
         for i in range(0, len(lst), n - offset):
             yield lst[i:i + n]
+
+    @classmethod
+    def _info_angle_between_two_vertices(cls, v1, v2, mode, op):
+        # print to INFO angle between two vertices
+        edge_slope = cls._get_slope_by_verts(
+            v1=v1,
+            v2=v2
+        )
+        op.report(
+            type={'INFO'},
+            message='Active edge angle: '
+                    + str(round(cls._slope_to_mode(radians=edge_slope, mode=mode), 4))
+                    + ' ' + mode
+        )
 
 
 # OPERATORS
