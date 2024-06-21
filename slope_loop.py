@@ -16,7 +16,7 @@ bl_info = {
     "name": "Slope Loop",
     "description": "Modifies selected loop to create uniform slope",
     "author": "Nikita Akimov, Paul Kotelevets",
-    "version": (1, 0, 1),
+    "version": (1, 1, 0),
     "blender": (2, 79, 0),
     "location": "View3D > Tool panel > 1D > Slope Loop",
     "doc_url": "https://github.com/Korchy/1d_slope_loop",
@@ -66,7 +66,7 @@ class SlopeLoop:
                             + str(round(cls._slope_to_mode(radians=edge_slope, mode=slope_mode), 4))
                             + ' ' + slope_mode
                 )
-            else:
+            elif len(selected_edges) > 1:
                 # create slope - move all vertices starting from active vertically by slope value
                 # find active vertex
                 active_vertex = None
@@ -124,6 +124,68 @@ class SlopeLoop:
         bpy.ops.object.mode_set(mode=mode)
 
     @classmethod
+    def q_slope_loop(cls, context, ob, op):
+        # Make q-slope from selected loop
+        ob = ob if ob else context.active_object
+        # edit/object mode
+        mode = ob.mode
+        if ob.mode == 'EDIT':
+            bpy.ops.object.mode_set(mode='OBJECT')
+        # selection mode
+        select_mode = 'VERT' if context.tool_settings.mesh_select_mode[0] \
+            else ('EDGE' if context.tool_settings.mesh_select_mode[1] else None)
+        # get data loop from source mesh
+        bm = bmesh.new()
+        bm.from_mesh(ob.data)
+        bm.verts.ensure_lookup_table()
+        bm.edges.ensure_lookup_table()
+        # source vertices
+        selected_vertices = [vert for vert in bm.verts if vert.select]
+        # print('selected vertices', selected_vertices)
+        # print('selected vertices', [len(v.link_edges) for v in selected_vertices])
+        if selected_vertices:
+            # if selected only one edge - only print info to INFO output
+            selected_edges = [edge for edge in bm.edges if edge.select]
+            if len(selected_edges) == 1:
+                # selected only one edge - print to INFO
+                edge_slope = cls._get_slope_by_verts(
+                    v1=selected_edges[0].verts[0],
+                    v2=selected_edges[0].verts[1]
+                )
+                op.report(
+                    type={'INFO'},
+                    message='Active edge angle: '
+                            + str(round(cls._slope_to_mode(radians=edge_slope, mode=context.scene.slope_loop_prop_mode), 4))
+                            + ' ' + context.scene.slope_loop_prop_mode
+                )
+            elif len(selected_edges) > 1:
+                # create slope - move all vertices starting from active vertically by slope value
+                # all vertices, exclude first and last - to move
+                moving_vertices = [vertex for vertex in selected_vertices
+                                   if len([e for e in vertex.link_edges if e.select]) != 1]
+                # first/last vertices
+                first_last_vertices = [vertex for vertex in selected_vertices
+                                       if len([e for e in vertex.link_edges if e.select]) == 1]
+                # get angle between first and last vertices
+                radians = cls._get_slope_by_verts(first_last_vertices[1], first_last_vertices[0])
+                # move all other vertices according to this angle
+                for vertex in moving_vertices:
+                    diff = cls._slope_points_height_diff(
+                        v1=first_last_vertices[0],
+                        v2=vertex,
+                        radians=radians
+                    )
+                    # correct diff sign
+                    diff *= -1 if first_last_vertices[0].co.z > first_last_vertices[1].co.z else 1
+                    # apply height difference for vertex
+                    vertex.co.z = first_last_vertices[0].co.z + diff
+                # save changed data to mesh
+                bm.to_mesh(ob.data)
+        bm.free()
+        # return mode back
+        bpy.ops.object.mode_set(mode=mode)
+
+    @classmethod
     def align_neighbour(cls, context, ob):
         # align neighbour vertices of selected loop
         ob = ob if ob else context.active_object
@@ -176,7 +238,7 @@ class SlopeLoop:
     @staticmethod
     def _get_slope_by_verts(v1, v2):
         # get slope angle by two vertices (BMVerts) in radians
-        v = v1.co - v2.co   # vector from v1 to v2
+        v = v1.co - v2.co   # vector from v2 to v1
         v_z = Vector((v.x, v.y, 0.0))   # projection on XY plane
         return v.angle(v_z)
 
@@ -262,6 +324,10 @@ class SlopeLoop:
             operator='slope_loop.align_neighbour',
             icon='GRIP'
         )
+        layout.operator(
+            operator='slope_loop.q_slope',
+            icon='IPO_EASE_IN_OUT'
+        )
 
     @staticmethod
     def _chunks(lst, n, offset=0):
@@ -299,6 +365,21 @@ class SlopeLoop_OT_make_slope(Operator):
             ob=context.active_object,
             slope_mode=self.mode,
             value=self.value,
+            op=self
+        )
+        return {'FINISHED'}
+
+
+class SlopeLoop_OT_q_slope(Operator):
+    bl_idname = 'slope_loop.q_slope'
+    bl_label = 'QSlope'
+    bl_description = 'QSlope'
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def execute(self, context):
+        SlopeLoop.q_slope_loop(
+            context=context,
+            ob=context.active_object,
             op=self
         )
         return {'FINISHED'}
@@ -351,6 +432,7 @@ def register(ui=True):
         description='Value mode'
     )
     register_class(SlopeLoop_OT_make_slope)
+    register_class(SlopeLoop_OT_q_slope)
     register_class(SlopeLoop_OT_align_neighbour)
     if ui:
         register_class(SlopeLoop_PT_panel)
@@ -360,6 +442,7 @@ def unregister(ui=True):
     if ui:
         unregister_class(SlopeLoop_PT_panel)
     unregister_class(SlopeLoop_OT_align_neighbour)
+    unregister_class(SlopeLoop_OT_q_slope)
     unregister_class(SlopeLoop_OT_make_slope)
     del Scene.slope_loop_prop_mode
     del Scene.slope_loop_prop_value

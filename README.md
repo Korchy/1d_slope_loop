@@ -4,7 +4,17 @@ Blender add-on.
 
 Add-on functionality
 -
+**Make Slope**
+
 Modifies selected loop to make a smooth slope with desired degrees, permilles or percents.
+
+**Align Neighbour**
+
+Align neighbour vertices to the Z coordinate of selected loop
+
+**QSlope**
+
+Moves selected vertices loop to have the save slope angle from first vertex to last
 
 Blender version
 -
@@ -12,6 +22,9 @@ Blender version
 
 Version history
 -
+1.1.0
+- Added QSlope
+
 1.0.1
 - UI improving
 - Integrated to the NA 1D TOOLS
