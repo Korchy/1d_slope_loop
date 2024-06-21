@@ -146,25 +146,37 @@ class SlopeLoop:
                 )
             elif len(selected_vertices) > 2:
                 # create slope - move all vertices vertically by slope value
-                # all vertices, exclude first and last - to move
-                moving_vertices = [vertex for vertex in selected_vertices
-                                   if len([e for e in vertex.link_edges if e.select]) != 1]
                 # first/last vertices
                 first_last_vertices = [vertex for vertex in selected_vertices
                                        if len([e for e in vertex.link_edges if e.select]) == 1]
-                # get angle between first and last vertices
-                radians = cls._get_slope_by_verts(first_last_vertices[1], first_last_vertices[0])
-                # move all other vertices according to this angle
-                for vertex in moving_vertices:
+                # edges
+                loop_length = sum([edge.calc_length() for edge in bm.edges if edge.select])
+
+                vertices_loop = cls._vertices_loop_sorted(
+                    bmesh_vertices_list=selected_vertices,
+                    bmesh_first_vertex=first_last_vertices[0]
+                )
+                # vertical diff between first and last vertices
+                diff = (first_last_vertices[0].co - first_last_vertices[1].co).z
+                # correct diff sign according to what vertex is higher, first or last
+                diff *= -1 if first_last_vertices[0].co.z > first_last_vertices[1].co.z else 1
+                # get angle by loop_length and diff
+                radians = round(math.asin(diff / loop_length), 4)
+                # split loop to vertices pairs
+                vertex_chunks = list(cls._chunks(
+                    lst=vertices_loop,
+                    n=2,
+                    offset=1
+                ))[:-1]
+                for chunk in vertex_chunks:
+                    # get height difference between current point and next point
                     diff = cls._slope_points_height_diff(
-                        v1=first_last_vertices[0],
-                        v2=vertex,
+                        v1=chunk[0],
+                        v2=chunk[1],
                         radians=radians
                     )
-                    # correct diff sign
-                    diff *= -1 if first_last_vertices[0].co.z > first_last_vertices[1].co.z else 1
-                    # apply height difference for vertex
-                    vertex.co.z = first_last_vertices[0].co.z + diff
+                    # apply height difference for each next point
+                    chunk[1].co.z = chunk[0].co.z + diff
                 # save changed data to mesh
                 bm.to_mesh(ob.data)
         bm.free()
