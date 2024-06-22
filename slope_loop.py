@@ -149,19 +149,29 @@ class SlopeLoop:
                 # first/last vertices
                 first_last_vertices = [vertex for vertex in selected_vertices
                                        if len([e for e in vertex.link_edges if e.select]) == 1]
+                # anyway first - last from top to bottom
+                first_vertex = first_last_vertices[0] \
+                    if first_last_vertices[0].co.z > first_last_vertices[1].co.z else first_last_vertices[1]
+                last_vertex = first_last_vertices[1] \
+                    if first_vertex == first_last_vertices[0] else first_last_vertices[0]
                 # edges
                 loop_length = sum([edge.calc_length() for edge in bm.edges if edge.select])
-
+                # sorted vertices loop
                 vertices_loop = cls._vertices_loop_sorted(
                     bmesh_vertices_list=selected_vertices,
-                    bmesh_first_vertex=first_last_vertices[0]
+                    bmesh_first_vertex=first_vertex
                 )
                 # vertical diff between first and last vertices
-                diff = (first_last_vertices[0].co - first_last_vertices[1].co).z
-                # correct diff sign according to what vertex is higher, first or last
-                diff *= -1 if first_last_vertices[0].co.z > first_last_vertices[1].co.z else 1
+                diff = (first_vertex.co - last_vertex.co).z
                 # get angle by loop_length and diff
                 radians = round(math.asin(diff / loop_length), 4)
+                # output radians to INFO in "Make Slope" format
+                op.report(
+                    type={'INFO'},
+                    message='QSlope angle: '
+                            + str(round(cls._slope_to_mode(radians=radians, mode=context.scene.slope_loop_prop_mode), 4))
+                            + ' ' + context.scene.slope_loop_prop_mode
+                )
                 # split loop to vertices pairs
                 vertex_chunks = list(cls._chunks(
                     lst=vertices_loop,
@@ -176,7 +186,7 @@ class SlopeLoop:
                         radians=radians
                     )
                     # apply height difference for each next point
-                    chunk[1].co.z = chunk[0].co.z + diff
+                    chunk[1].co.z = chunk[0].co.z - diff    # "-" because we always go from top to bottom
                 # save changed data to mesh
                 bm.to_mesh(ob.data)
         bm.free()
