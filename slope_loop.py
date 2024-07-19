@@ -16,7 +16,7 @@ bl_info = {
     "name": "Slope Loop",
     "description": "Modifies selected loop to create uniform slope",
     "author": "Nikita Akimov, Paul Kotelevets",
-    "version": (1, 1, 0),
+    "version": (1, 1, 1),
     "blender": (2, 79, 0),
     "location": "View3D > Tool panel > 1D > Slope Loop",
     "doc_url": "https://github.com/Korchy/1d_slope_loop",
@@ -164,7 +164,12 @@ class SlopeLoop:
                 # vertical diff between first and last vertices
                 diff = (first_vertex.co - last_vertex.co).z
                 # get angle by loop_length and diff
-                radians = round(math.asin(diff / loop_length), 4)
+                # maybe error in counting math.assin
+                # radians = round(math.asin(diff / loop_length), 4)
+                radians = cls._get_slope_by_verts(
+                    v1=first_vertex,
+                    v2=last_vertex
+                )
                 # output radians to INFO in "Make Slope" format
                 op.report(
                     type={'INFO'},
@@ -180,13 +185,13 @@ class SlopeLoop:
                 ))[:-1]
                 for chunk in vertex_chunks:
                     # get height difference between current point and next point
-                    diff = cls._slope_points_height_diff(
+                    vertex_diff = cls._slope_points_height_diff(
                         v1=chunk[0],
                         v2=chunk[1],
                         radians=radians
                     )
                     # apply height difference for each next point
-                    chunk[1].co.z = chunk[0].co.z - diff    # "-" because we always go from top to bottom
+                    chunk[1].co.z = chunk[0].co.z - vertex_diff    # "-" because we always go from top to bottom
                 # save changed data to mesh
                 bm.to_mesh(ob.data)
         bm.free()
