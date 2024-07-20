@@ -16,7 +16,7 @@ bl_info = {
     "name": "Slope Loop",
     "description": "Modifies selected loop to create uniform slope",
     "author": "Nikita Akimov, Paul Kotelevets",
-    "version": (1, 1, 1),
+    "version": (1, 1, 0),
     "blender": (2, 79, 0),
     "location": "View3D > Tool panel > 1D > Slope Loop",
     "doc_url": "https://github.com/Korchy/1d_slope_loop",
@@ -165,11 +165,7 @@ class SlopeLoop:
                 diff = (first_vertex.co - last_vertex.co).z
                 # get angle by loop_length and diff
                 # maybe error in counting math.assin
-                # radians = round(math.asin(diff / loop_length), 4)
-                radians = cls._get_slope_by_verts(
-                    v1=first_vertex,
-                    v2=last_vertex
-                )
+                radians = round(math.asin(diff / loop_length), 4)
                 # output radians to INFO in "Make Slope" format
                 op.report(
                     type={'INFO'},

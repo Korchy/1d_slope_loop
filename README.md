@@ -22,9 +22,6 @@ Blender version
 
 Version history
 -
-1.1.1
-- Fixing error in QSlope angle counting
-
 1.1.0
 - Added QSlope
 
