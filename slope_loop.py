@@ -16,7 +16,7 @@ bl_info = {
     "name": "Slope Loop",
     "description": "Modifies selected loop to create uniform slope",
     "author": "Nikita Akimov, Paul Kotelevets",
-    "version": (1, 1, 0),
+    "version": (1, 1, 2),
     "blender": (2, 79, 0),
     "location": "View3D > Tool panel > 1D > Slope Loop",
     "doc_url": "https://github.com/Korchy/1d_slope_loop",
@@ -155,7 +155,13 @@ class SlopeLoop:
                 last_vertex = first_last_vertices[1] \
                     if first_vertex == first_last_vertices[0] else first_last_vertices[0]
                 # edges
+                # calculating with real length - not valid. Why???
                 loop_length = sum([edge.calc_length() for edge in bm.edges if edge.select])
+                # better way - calculating through projection on XY plane (Paul)
+                loop_proj_length = sum([
+                    (Vector((edge.verts[0].co.x, edge.verts[0].co.y)) - Vector((edge.verts[1].co.x, edge.verts[1].co.y))).length
+                    for edge in bm.edges if edge.select
+                ])
                 # sorted vertices loop
                 vertices_loop = cls._vertices_loop_sorted(
                     bmesh_vertices_list=selected_vertices,
@@ -164,8 +170,10 @@ class SlopeLoop:
                 # vertical diff between first and last vertices
                 diff = (first_vertex.co - last_vertex.co).z
                 # get angle by loop_length and diff
-                # maybe error in counting math.assin
+                # maybe error in calculating math.assin ?
                 radians = round(math.asin(diff / loop_length), 4)
+                # better way - calculating with atan by projection on XY plane
+                radians = round(math.atan(diff / loop_proj_length), 4)
                 # output radians to INFO in "Make Slope" format
                 op.report(
                     type={'INFO'},

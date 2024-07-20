@@ -22,6 +22,9 @@ Blender version
 
 Version history
 -
+1.1.2
+- Calculating angle not by whole loop length and asin(), but by length of its projection on XY plane and atan()
+
 1.1.0
 - Added QSlope
 
