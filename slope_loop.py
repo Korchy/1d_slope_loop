@@ -16,7 +16,7 @@ bl_info = {
     "name": "Slope Loop",
     "description": "Modifies selected loop to create uniform slope",
     "author": "Nikita Akimov, Paul Kotelevets",
-    "version": (1, 1, 2),
+    "version": (1, 1, 3),
     "blender": (2, 79, 0),
     "location": "View3D > Tool panel > 1D > Slope Loop",
     "doc_url": "https://github.com/Korchy/1d_slope_loop",
@@ -145,57 +145,49 @@ class SlopeLoop:
                     op=op
                 )
             elif len(selected_vertices) > 2:
-                # create slope - move all vertices vertically by slope value
-                # first/last vertices
-                first_last_vertices = [vertex for vertex in selected_vertices
-                                       if len([e for e in vertex.link_edges if e.select]) == 1]
-                # anyway first - last from top to bottom
-                first_vertex = first_last_vertices[0] \
-                    if first_last_vertices[0].co.z > first_last_vertices[1].co.z else first_last_vertices[1]
-                last_vertex = first_last_vertices[1] \
-                    if first_vertex == first_last_vertices[0] else first_last_vertices[0]
-                # edges
-                # calculating with real length - not valid. Why???
-                loop_length = sum([edge.calc_length() for edge in bm.edges if edge.select])
-                # better way - calculating through projection on XY plane (Paul)
-                loop_proj_length = sum([
-                    (Vector((edge.verts[0].co.x, edge.verts[0].co.y)) - Vector((edge.verts[1].co.x, edge.verts[1].co.y))).length
-                    for edge in bm.edges if edge.select
-                ])
-                # sorted vertices loop
-                vertices_loop = cls._vertices_loop_sorted(
-                    bmesh_vertices_list=selected_vertices,
-                    bmesh_first_vertex=first_vertex
-                )
-                # vertical diff between first and last vertices
-                diff = (first_vertex.co - last_vertex.co).z
-                # get angle by loop_length and diff
-                # maybe error in calculating math.assin ?
-                radians = round(math.asin(diff / loop_length), 4)
-                # better way - calculating with atan by projection on XY plane
-                radians = round(math.atan(diff / loop_proj_length), 4)
-                # output radians to INFO in "Make Slope" format
-                op.report(
-                    type={'INFO'},
-                    message='QSlope angle: '
-                            + str(round(cls._slope_to_mode(radians=radians, mode=context.scene.slope_loop_prop_mode), 4))
-                            + ' ' + context.scene.slope_loop_prop_mode
-                )
-                # split loop to vertices pairs
-                vertex_chunks = list(cls._chunks(
-                    lst=vertices_loop,
-                    n=2,
-                    offset=1
-                ))[:-1]
-                for chunk in vertex_chunks:
-                    # get height difference between current point and next point
-                    vertex_diff = cls._slope_points_height_diff(
-                        v1=chunk[0],
-                        v2=chunk[1],
-                        radians=radians
+                # to enable multi-select - form list of selected loops, which needs to be processed by QSlope
+                loops = cls._vertices_loops_sorted(vertices_list=selected_vertices)
+                # process each loop of vertices
+                for loop in loops:
+                    # check to reverse loop, to guarantee that the first vertex is upper than the last
+                    if loop[0].co.z < loop[-1].co.z:
+                        loop.reverse()
+                    # get loop length
+                    #   calculating with real length - not valid. Why???
+                    #   better way - calculating through projection on XY plane (Paul)
+                    loop_proj_length = sum(
+                        [(Vector((chunk[1].co.x, chunk[1].co.y)) - Vector((chunk[0].co.x, chunk[0].co.y))).length
+                         for chunk in cls._chunks(lst=loop, n=2, offset=1) if len(chunk) > 1]
                     )
-                    # apply height difference for each next point
-                    chunk[1].co.z = chunk[0].co.z - vertex_diff    # "-" because we always go from top to bottom
+                    # vertical diff between first and last vertices
+                    diff = (loop[0].co - loop[-1].co).z
+                    # get angle by loop_length and diff
+                    # maybe error in calculating math.assin ?
+                    # radians = round(math.asin(diff / loop_length), 4)
+                    # better way - calculating with atan by projection on XY plane
+                    radians = round(math.atan(diff / loop_proj_length), 4)
+                    # output radians to INFO in 'Make Slope' format
+                    op.report(
+                        type={'INFO'},
+                        message='QSlope angle: '
+                                + str(round(cls._slope_to_mode(radians=radians, mode=context.scene.slope_loop_prop_mode), 4))
+                                + ' ' + context.scene.slope_loop_prop_mode
+                    )
+                    # split loop to vertices pairs
+                    vertex_chunks = list(cls._chunks(
+                        lst=loop,
+                        n=2,
+                        offset=1
+                    ))[:-1]
+                    for chunk in vertex_chunks:
+                        # get height difference between current point and next point
+                        vertex_diff = cls._slope_points_height_diff(
+                            v1=chunk[0],
+                            v2=chunk[1],
+                            radians=radians
+                        )
+                        # apply height difference for each next point
+                        chunk[1].co.z = chunk[0].co.z - vertex_diff  # "-" because we always go from top to bottom
                 # save changed data to mesh
                 bm.to_mesh(ob.data)
         bm.free()
@@ -251,6 +243,51 @@ class SlopeLoop:
                     break
         # return sorted sequence
         return vertices_sorted
+
+    @staticmethod
+    def _vertices_loops_sorted(vertices_list):
+        # return list of selected loops
+        # in each loop vertices sorted by following each other starting from first_vertex
+        loops = []
+        if vertices_list:
+            # overflow error checking
+            _i = 0
+            _l = len(vertices_list)
+            # get first boundary vertex (selected and has only one linked selected edge)
+            boundary_vertex = next((vertex for vertex in vertices_list
+                                    if vertex.select and len([e for e in vertex.link_edges if e.select]) == 1), None)
+            while boundary_vertex is not None:
+                loop = [boundary_vertex, ]
+                # add loop to loops list
+                loops.append(loop)
+                vertices_list.remove(boundary_vertex)
+                _i += 1
+                # alarm break
+                if _i > _l:
+                    print('_points_sorted() err exit')
+                    break
+                # from loop starting from this boundary vertex
+                next_vertex = next((_edge.other_vert(boundary_vertex) for _edge in boundary_vertex.link_edges
+                                    if _edge.select and _edge.other_vert(boundary_vertex) not in loop), None)
+                while next_vertex is not None:
+                    # add vertex to the current loop
+                    loop.append(next_vertex)
+                    vertices_list.remove(next_vertex)
+                    _i += 1
+                    # alarm break
+                    if _i > _l:
+                        print('_points_sorted() err exit')
+                        break
+                    # continue to get next vertices for this loop
+                    next_vertex = next((_edge.other_vert(next_vertex) for _edge in next_vertex.link_edges
+                                        if _edge.select and _edge.other_vert(next_vertex) not in loop), None)
+                # try to get next boundary vertex for finding and processing next loop
+                boundary_vertex = next((vertex for vertex in vertices_list
+                                        if vertex.select and len([e for e in vertex.link_edges if e.select]) == 1), None)
+        # remove loops with just 1 or 2 vertices
+        loops = [loop for loop in loops if len(loop) > 2]
+        # return loops list
+        return loops
 
     @staticmethod
     def _get_slope_by_verts(v1, v2):

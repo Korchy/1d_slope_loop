@@ -14,7 +14,7 @@ Align neighbour vertices to the Z coordinate of selected loop
 
 **QSlope**
 
-Moves selected vertices loop to have the save slope angle from first vertex to last
+Moves selected vertices loop to have the same slope angle from first vertex to last
 
 Blender version
 -
@@ -22,6 +22,9 @@ Blender version
 
 Version history
 -
+1.1.3
+- Added support of multi loops selected for QSlope
+
 1.1.2
 - Calculating angle not by whole loop length and asin(), but by length of its projection on XY plane and atan()
 
